@@ -490,8 +490,7 @@ def tokens():
 
     return response
 
-
-def get_app():
+def get_app(*cli_args):
     p = get_argument_parser()
     p = ArgumentParser(
         description=textwrap.dedent('''\
@@ -512,7 +511,7 @@ def get_app():
 
     p.add_argument('--fdebug', action='store_true')
 
-    args = p.parse_args()
+    args = p.parse_args(args=cli_args if cli_args else None)
     setup_logging(args)
     logger = logging.getLogger(__name__)
     logger.info('loglevel is: {}'.format(logging.getLevelName(logger.getEffectiveLevel())))
