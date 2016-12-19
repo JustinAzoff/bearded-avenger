@@ -522,10 +522,12 @@ def get_app():
     setup_runtime_path(args.runtime_path)
 
     app.config["SECRET_KEY"] = os.urandom(1024)
+    app._args = args
     return app
 
 def main():
     app = get_app()
+    args = app._args
     try:
         logger.info('starting up...')
         app.run(host=args.listen, port=args.listen_port, debug=args.fdebug, threaded=True)
