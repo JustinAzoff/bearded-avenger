@@ -491,7 +491,7 @@ def tokens():
     return response
 
 
-def main():
+def get_app():
     p = get_argument_parser()
     p = ArgumentParser(
         description=textwrap.dedent('''\
@@ -521,9 +521,12 @@ def main():
 
     setup_runtime_path(args.runtime_path)
 
+    app.config["SECRET_KEY"] = os.urandom(1024)
+    return app
+
+def main():
+    app = get_app()
     try:
-        logger.info('pinging router...')
-        app.config["SECRET_KEY"] = os.urandom(1024)
         logger.info('starting up...')
         app.run(host=args.listen, port=args.listen_port, debug=args.fdebug, threaded=True)
 
