@@ -3,6 +3,7 @@ import os
 import arrow
 from sqlalchemy import Column, Integer, String, Float, DateTime, UnicodeText, desc, ForeignKey
 from sqlalchemy.orm import relationship, backref, class_mapper, lazyload
+from sqlalchemy.sql import func
 
 from cifsdk.constants import RUNTIME_PATH, PYVERSION
 import json
@@ -15,6 +16,7 @@ from .ip import Ip
 from cif.store.sqlite import Base
 from pprint import pprint
 import re
+import time
 
 DB_FILE = os.path.join(RUNTIME_PATH, 'cif.sqlite')
 VALID_FILTERS = ['indicator', 'confidence', 'provider', 'itype', 'group', 'tags']
@@ -22,6 +24,10 @@ REQUIRED_FIELDS = ['provider', 'indicator', 'tags', 'group', 'itype']
 
 if PYVERSION > 2:
     basestring = (str, bytes)
+
+#peers removed
+INDICATOR_COLS = "id indicator group itype tlp provider portlist asn_desc asn cc protocol reporttime firsttime lasttime confidence timezone city longitude latitude description additional_data rdata count".split()
+INDICATOR_COLS = "id indicator itype provider reporttime firsttime lasttime confidence description additional_data".split()
 
 
 class Indicator(Base):
@@ -170,16 +176,13 @@ class Message(Base):
 class IndicatorMixin(object):
     def _as_dict(self, obj):
         d = {}
-        for col in class_mapper(obj.__class__).mapped_table.c:
-            d[col.name] = getattr(obj, col.name)
-            if d[col.name] and col.name.endswith('time'):
-                d[col.name] = getattr(obj, col.name).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-            d[col.name] = d[col.name]
+        for col, value in obj._asdict().items():
+            d[col] = value
+            if value and col.endswith('time'):
+                d[col] = value.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
-        try:
-            d['tags'] = [t.tag for t in obj.tags]
-        except AttributeError:
-            pass
+        if 'tags' in d:
+            d['tags'] = d['tags'].split(",")
 
         try:
             d['message'] = [b64encode(m.message) for m in obj.messages]
@@ -204,7 +207,10 @@ class IndicatorMixin(object):
             if filters.get(f):
                 q_filters[f] = filters[f]
 
-        s = self.handle().query(Indicator)
+        query_cols = [getattr(Indicator, col) for col in INDICATOR_COLS]
+        want_cols = list(query_cols)
+        want_cols.append(func.group_concat(Tag.tag).label("tags"))
+        s = self.handle().query(*want_cols).join(Tag).group_by(*query_cols)
 
         filters = q_filters
 
@@ -277,12 +283,13 @@ class IndicatorMixin(object):
         if sql:
             self.logger.debug(sql)
 
-        if filters.get('tags'):
-            s = s.join(Tag)
+        #rv = s.order_by(desc(Indicator.reporttime))
+        rv = s.filter(sql).limit(limit)#.values(*query_cols)
 
-        rv = s.order_by(desc(Indicator.reporttime)).filter(sql).limit(limit)
-
-        return [self._as_dict(x) for x in rv]
+        s = time.time()
+        d =  [self._as_dict(x) for x in rv]
+        self.logger.info("Serialized %d records in %0.2f seconds", len(d), time.time() - s)
+        return d
 
     def test_valid_indicator(self, i):
         if isinstance(i, Indicator):
